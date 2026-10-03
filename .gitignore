@@ -1,0 +1,14 @@
+server.exe
+server
+*.o
+*.out
+
+source.bin
+resolve.bin
+*.tdbg
+
+.vscode/
+.idea/
+
+.DS_Store
+Thumbs.db
