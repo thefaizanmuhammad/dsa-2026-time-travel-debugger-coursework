@@ -20,3 +20,6 @@ Thumbs.db
 # Generated test files
 *.trace
 /test_validation
+
+/test_resolve
+/resolve.bin

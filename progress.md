@@ -122,3 +122,28 @@ Brief description of the current project state.
 
 #### Tests Performed
 -
+
+## 13 October 2026 — Pass 0x1 Resolution
+
+### Status
+Function resolver implemented and tested.
+
+### Completed
+- Implemented binary record writing and reading.
+- Stored function names and their byte offsets.
+- Implemented CALL target patching.
+- Added checks for missing main, duplicate functions and undefined calls.
+- Created resolver tests.
+
+### Currently Working On
+- Pass 0x2: Execution engine.
+
+### Next
+- Implement tokenization.
+- Execute C-- instructions.
+- Manage function calls and snapshots.
+
+### Tests Performed
+- Compiled resolver using G++ with C++17.
+- Verified function offsets and CALL patching.
+- Tested missing main, undefined calls and duplicate functions.
