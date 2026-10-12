@@ -38,6 +38,39 @@ Project setup started.
 
 ---
 
+## 13 October 2026
+
+### Status
+Core data structures implemented and tested successfully.
+
+### Completed
+- Verified the Ubuntu C++ development environment.
+- Implemented the custom Stack using a singly linked list.
+- Implemented push, pop, peek, isEmpty, depth, and snapshot_into.
+- Added stack overflow and underflow handling.
+- Implemented the Timeline using a doubly linked list.
+- Implemented record, begin, and getStepCount.
+- Added memory cleanup through destructors.
+- Created independent unit tests for Stack and Timeline.
+
+### Currently Working On
+- Pass 0x0: Source program validation.
+
+### Next
+- Implement source line reading and function structure validation.
+- Test valid and invalid function declarations.
+- Begin Pass 0x1: Function resolution.
+
+### Problems / Questions
+- Remaining starter functions are incomplete and generate compiler warnings.
+
+### Tests Performed
+- Compiled server.cpp using G++ with C++17.
+- Confirmed compiler exit code 0.
+- Verified Stack and Timeline unit tests passed.
+
+---
+
 ## Daily Update Template
 
 ### DD Month YYYY

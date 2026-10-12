@@ -16,6 +16,7 @@
 #include <sys/socket.h>
 #include <cstdint>
 #include <cstdio>
+#include <stdexcept>
 using namespace std;
 
 // ---- Constants ----
@@ -39,38 +40,101 @@ class Stack
         T data;
         Node *next;
     };
+
     Node *top;
     int32_t count;
 
 public:
-    // Implement these functions:
     Stack()
-    { // initialize the stack
+    {
+        top = nullptr;
+        count = 0;
     }
+
     void push(const T &val)
     {
+        if (count >= MAX_STACK_DEPTH)
+        {
+            throw runtime_error("Stack overflow");
+        }
 
-        // pushes the value on the stack if max limit is not reached yet.
+        Node *newNode = new Node{val, top};
+        top = newNode;
+        count++;
     }
+
     T pop()
     {
-        // pop the top value on the stack
+        if (isEmpty())
+        {
+            throw runtime_error("Stack underflow");
+        }
+
+        Node *temp = top;
+        T value = temp->data;
+
+        top = top->next;
+        delete temp;
+        count--;
+
+        return value;
     }
+
     T &peek()
     {
-        // returns the top value on the stack
+        if (isEmpty())
+        {
+            throw runtime_error("Stack is empty");
+        }
+
+        return top->data;
     }
+
     bool isEmpty()
     {
+        return top == nullptr;
     }
+
     int32_t depth()
     {
+        return count;
     }
+
     int32_t snapshot_into(T out[], int32_t maxLen)
     {
-        // copies every frame, top to bottom in the array given as a parameter
-        // this is what buildSnapshot() call, returns count written
+        if (maxLen <= 0)
+        {
+            return 0;
+        }
+
+        if (out == nullptr)
+        {
+            throw runtime_error("Invalid snapshot array");
+        }
+
+        Node *current = top;
+        int32_t copied = 0;
+
+        while (current != nullptr && copied < maxLen)
+        {
+            out[copied] = current->data;
+            copied++;
+            current = current->next;
+        }
+
+        return copied;
     }
+
+    ~Stack()
+    {
+        while (!isEmpty())
+        {
+            pop();
+        }
+    }
+
+    Stack(const Stack &) = delete;
+    Stack &operator=(const Stack &) = delete;
 };
 
 
@@ -88,21 +152,51 @@ class Timeline
     int32_t stepCount;
 
 public:
-    // Implement these functions
     Timeline()
     {
+        head = nullptr;
+        tail = nullptr;
+        stepCount = 0;
     }
+
+    ~Timeline();
+
+    Timeline(const Timeline &) = delete;
+    Timeline &operator=(const Timeline &) = delete;
+
     void record(Snapshot *s)
     {
-        // add record in the timeline
+        if (s == nullptr)
+        {
+            throw runtime_error("Invalid snapshot");
+        }
+
+        TimelineNode *newNode = new TimelineNode{s, nullptr, tail};
+
+        if (head == nullptr)
+        {
+            head = newNode;
+        }
+        else
+        {
+            tail->next = newNode;
+        }
+
+        tail = newNode;
+        stepCount++;
     }
+
     TimelineNode *begin()
     {
+        return head;
     }
+
     int32_t getStepCount()
     {
+        return stepCount;
     }
 };
+
 
 // Core structs
 struct Variable
@@ -124,6 +218,22 @@ struct Snapshot
     Frame callStack[MAX_STACK_DEPTH];
     int32_t stackDepth;
 };
+
+Timeline::~Timeline()
+{
+    TimelineNode *current = head;
+
+    while (current != nullptr)
+    {
+        TimelineNode *nextNode = current->next;
+
+        delete current->data;
+        delete current;
+
+        current = nextNode;
+    }
+}
+
 struct TTDBHeader
 {
     char magic[4]; // "TTDB"
