@@ -579,23 +579,313 @@ struct Token
 };
 int32_t tokenizeLine(const string &line, Token tokens[], int32_t maxTokens)
 {
-    // first word is always a instruction keyword
-    // instruction set = [func, func_end, call, set, add, sub, mul and div]
-    // next word is identifier like name of a function, variable name
-    // after identifier all are the params/arg, space separated
+    int32_t count = 0;
+    int32_t i = 0;
+
+    while (i < line.length())
+    {
+        while (i < line.length() && (line[i] == ' ' || line[i] == '\t'))
+        {
+            i++;
+        }
+
+        if (i >= line.length())
+        {
+            break;
+        }
+
+        if (count >= maxTokens)
+        {
+            return -1;
+        }
+
+        string word = "";
+
+        while (i < line.length() && line[i] != ' ' && line[i] != '\t')
+        {
+            word += line[i];
+            i++;
+        }
+
+        tokens[count].text = word;
+
+        if (count == 0)
+        {
+            tokens[count].type = KEYWORD;
+        }
+        else if (count == 1)
+        {
+            tokens[count].type = IDENTIFIER;
+        }
+        else
+        {
+            tokens[count].type = PARAM;
+        }
+
+        count++;
+    }
+
+    return count;
 }
 Snapshot *buildSnapshot(Stack<Frame> &callStack)
 {
-    // build the snapshot based on the callStack given
+    Snapshot *s = new Snapshot{};
+
+    s->stackDepth = callStack.snapshot_into(s->callStack, MAX_STACK_DEPTH);
+
+    return s;
 }
+bool isNumber(const string &text)
+{
+    if (text.empty())
+        return false;
+
+    int i = 0;
+
+    if (text[0] == '-' || text[0] == '+')
+        i = 1;
+
+    if (i == text.length())
+        return false;
+
+    while (i < text.length())
+    {
+        if (text[i] < '0' || text[i] > '9')
+            return false;
+
+        i++;
+    }
+
+    return true;
+}
+
+Variable *findVariable(Frame &frame, const string &name)
+{
+    for (int i = 0; i < frame.argc; i++)
+    {
+        if (frame.argv[i].name == name)
+            return &frame.argv[i];
+    }
+
+    for (int i = 0; i < frame.localCount; i++)
+    {
+        if (frame.locals[i].name == name)
+            return &frame.locals[i];
+    }
+
+    return nullptr;
+}
+
+int32_t getValue(Frame &frame, const string &text)
+{
+    if (isNumber(text))
+        return stoi(text);
+
+    Variable *var = findVariable(frame, text);
+
+    if (var == nullptr)
+        throw runtime_error("Unknown variable: " + text);
+
+    return var->value;
+}
+
+void setValue(Frame &frame, const string &name, int32_t value)
+{
+    Variable *var = findVariable(frame, name);
+
+    if (var != nullptr)
+    {
+        var->value = value;
+        return;
+    }
+
+    if (frame.localCount >= MAX_VARS_PER_FRAME)
+        throw runtime_error("Too many variables");
+
+    frame.locals[frame.localCount].name = name;
+    frame.locals[frame.localCount].value = value;
+
+    frame.localCount++;
+}
+
 void executeProgram(const char *resolveBinPath, int64_t mainOffset, Timeline &timeline)
 {
-    // initialize the call stack
-    // make the main frame
-    // push main frame on the call stack
+    FILE *file = fopen(resolveBinPath, "rb");
 
-    // implementation:
-    // execute line by line, and according to the keyword perform action
+    if (file == nullptr || mainOffset < 0)
+        throw runtime_error("Cannot start execution");
+
+    Stack<Frame> callStack;
+    string argNames[MAX_STACK_DEPTH][MAX_VARS_PER_FRAME];
+    string line;
+    Token words[MAX_TOKENS];
+
+    fseek(file, mainOffset, SEEK_SET);
+    readResolveRecord(file, line);
+
+    int count = tokenizeLine(line, words, MAX_TOKENS);
+
+    if (count != 2 || words[0].text != "func" || words[1].text != "main")
+    {
+        fclose(file);
+        throw runtime_error("Invalid main function");
+    }
+
+    Frame mainFrame{};
+    mainFrame.func_name = "main";
+
+    callStack.push(mainFrame);
+    timeline.record(buildSnapshot(callStack));
+
+    int64_t pc = ftell(file);
+    bool done = false;
+
+    while (!done)
+    {
+        if (fseek(file, pc, SEEK_SET) != 0)
+        {
+            fclose(file);
+            throw runtime_error("Invalid instruction address");
+        }
+
+        line = "";
+
+        int64_t target = readResolveRecord(file, line);
+        int64_t next = ftell(file);
+
+        if (next <= pc || feof(file))
+        {
+            fclose(file);
+            throw runtime_error("Unexpected end of program");
+        }
+
+        pc = next;
+
+        count = tokenizeLine(line, words, MAX_TOKENS);
+
+        if (count < 0)
+        {
+            fclose(file);
+            throw runtime_error("Too many tokens");
+        }
+
+        if (count == 0 || words[0].text[0] == '/')
+            continue;
+
+        string op = words[0].text;
+        Frame &current = callStack.peek();
+
+        if (op == "set" || op == "add" || op == "sub" ||
+            op == "mul" || op == "div")
+        {
+            if (count != 3)
+                throw runtime_error("Wrong number of operands");
+
+            string name = words[1].text;
+            int32_t right = getValue(current, words[2].text);
+            int32_t result = right;
+
+            if (op != "set")
+            {
+                int32_t left = getValue(current, name);
+
+                if (op == "add")
+                    result = left + right;
+
+                if (op == "sub")
+                    result = left - right;
+
+                if (op == "mul")
+                    result = left * right;
+
+                if (op == "div")
+                {
+                    if (right == 0)
+                        throw runtime_error("Division by zero");
+
+                    result = left / right;
+                }
+            }
+
+            setValue(current, name, result);
+        }
+        else if (op == "call")
+        {
+            if (count < 2 || target < 0)
+                throw runtime_error("Invalid function call");
+
+            if (fseek(file, target, SEEK_SET) != 0)
+                throw runtime_error("Invalid call target");
+
+            string header;
+            readResolveRecord(file, header);
+
+            Token params[MAX_TOKENS];
+
+            int num = tokenizeLine(header, params, MAX_TOKENS);
+
+            if (num < 2 || params[0].text != "func" ||
+                params[1].text != words[1].text)
+                throw runtime_error("Function not found");
+
+            if (num - 2 != count - 2)
+                throw runtime_error("Wrong number of arguments");
+
+            if (callStack.depth() >= MAX_STACK_DEPTH)
+                throw runtime_error("Stack overflow");
+
+            int slot = callStack.depth();
+
+            Frame called{};
+            called.func_name = params[1].text;
+            called.argc = num - 2;
+            called.returnLine = pc;
+
+            for (int i = 0; i < called.argc; i++)
+            {
+                called.argv[i].name = params[i + 2].text;
+                called.argv[i].value = getValue(current, words[i + 2].text);
+
+                argNames[slot][i] = "";
+
+                if (!isNumber(words[i + 2].text))
+                    argNames[slot][i] = words[i + 2].text;
+            }
+
+            callStack.push(called);
+            pc = ftell(file);
+        }
+        else if (op == "func_end")
+        {
+            Frame finished = callStack.pop();
+
+            if (callStack.isEmpty())
+            {
+                done = true;
+            }
+            else
+            {
+                int slot = callStack.depth();
+                Frame &parent = callStack.peek();
+
+                for (int i = 0; i < finished.argc; i++)
+                {
+                    if (argNames[slot][i] != "")
+                        setValue(parent, argNames[slot][i], finished.argv[i].value);
+                }
+
+                pc = finished.returnLine;
+            }
+        }
+        else
+        {
+            throw runtime_error("Unknown instruction: " + op);
+        }
+
+        timeline.record(buildSnapshot(callStack));
+    }
+
+    fclose(file);
 }
 
 // PASS 0x3: SERIALIZE TIMELINE

@@ -23,3 +23,9 @@ Thumbs.db
 
 /test_resolve
 /resolve.bin
+
+/test_execution
+/test_engine
+/engine.trace
+/core
+/core.*
