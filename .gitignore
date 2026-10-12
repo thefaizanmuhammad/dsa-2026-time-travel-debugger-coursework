@@ -12,3 +12,11 @@ resolve.bin
 
 .DS_Store
 Thumbs.db
+
+# Compiled test executables
+/test_structures
+/server
+
+# Generated test files
+*.trace
+/test_validation

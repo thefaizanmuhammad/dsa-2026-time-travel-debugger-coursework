@@ -71,6 +71,36 @@ Core data structures implemented and tested successfully.
 
 ---
 
+## 13 October 2026 — Pass 0x0 Validation
+
+### Status
+Source validation implemented and tested.
+
+### Completed
+- Implemented readSourceLine, firstWord and secondWord.
+- Implemented validateProgram using a Boolean state variable.
+- Added checks for nested functions, missing func_end, extra func_end and missing function names.
+- Added checks for instructions outside functions.
+- Created test_validation.cpp.
+
+### Currently Working On
+- Pass 0x1: Function resolution.
+
+### Next
+- Implement resolve.bin record writing and reading.
+- Implement function offset tracking and CALL patching.
+- Test function resolution.
+
+### Problems / Questions
+- Remaining pipeline functions are incomplete.
+
+### Tests Performed
+- Compiled validation tests using G++ and C++17.
+- Valid and invalid program tests passed.
+- git diff --check passed.
+
+---
+
 ## Daily Update Template
 
 ### DD Month YYYY

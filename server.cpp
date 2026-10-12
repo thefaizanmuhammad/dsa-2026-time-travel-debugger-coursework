@@ -266,19 +266,127 @@ struct PendingPatch
 // PASS 0x0: READING source.bin + VALIDITY CHECK
 bool readSourceLine(ifstream &in, string &out)
 {
-    // reads the next nonblank line
+    while (getline(in, out))
+    {
+        if (out.find_first_not_of(" \t\r\n") != string::npos)
+        {
+            return true;
+        }
+    }
+
+    return false;
 }
+
 string firstWord(const string &line)
 {
-    // returns first word from the input string
+    int i = 0;
+
+    while (i < line.length() && line[i] == ' ')
+    {
+        i++;
+    }
+
+    string word = "";
+
+    while (i < line.length() && line[i] != ' ' && line[i] != '\t')
+    {
+        word += line[i];
+        i++;
+    }
+
+    return word;
 }
+
 string secondWord(const string &line)
 {
-    // returns the second word
+    int i = 0;
+
+    while (i < line.length() && line[i] != ' ' && line[i] != '\t')
+    {
+        i++;
+    }
+
+    while (i < line.length() && (line[i] == ' ' || line[i] == '\t'))
+    {
+        i++;
+    }
+
+    string word = "";
+
+    while (i < line.length() && line[i] != ' ' && line[i] != '\t')
+    {
+        word += line[i];
+        i++;
+    }
+
+    return word;
 }
+
 bool validateProgram(const char *sourcePath)
 {
-    // for each func defined there should be exactly one func_end and no nested funcs allowed - 
+    ifstream file(sourcePath);
+
+    if (!file.is_open())
+    {
+        cout << "Cannot open source file" << endl;
+        return false;
+    }
+
+    string line;
+    bool insideFunction = false;
+    int32_t totalFunctions = 0;
+
+    while (readSourceLine(file, line))
+    {
+        string word = firstWord(line);
+
+        if (word == "func")
+        {
+            if (insideFunction)
+            {
+                cout << "Nested function not allowed" << endl;
+                return false;
+            }
+
+            if (secondWord(line) == "")
+            {
+                cout << "Function name missing" << endl;
+                return false;
+            }
+
+            insideFunction = true;
+            totalFunctions++;
+        }
+        else if (word == "func_end")
+        {
+            if (!insideFunction)
+            {
+                cout << "Extra func_end found" << endl;
+                return false;
+            }
+
+            insideFunction = false;
+        }
+        else if (!insideFunction)
+        {
+            cout << "Instruction outside function" << endl;
+            return false;
+        }
+    }
+
+    if (insideFunction)
+    {
+        cout << "Missing func_end" << endl;
+        return false;
+    }
+
+    if (totalFunctions == 0)
+    {
+        cout << "No functions found" << endl;
+        return false;
+    }
+
+    return true;
 }
 
 // PASS 0x1: RESOLVE() -> resolve.bin
