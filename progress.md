@@ -147,3 +147,33 @@ Function resolver implemented and tested.
 - Compiled resolver using G++ with C++17.
 - Verified function offsets and CALL patching.
 - Tested missing main, undefined calls and duplicate functions.
+
+## 13 October 2026 — Execution Engine and Serialization
+
+### Status
+Phase 01 server pipeline implemented and tested.
+
+### Completed
+- Implemented the tokenizer, variable handling, function calls and returns, and snapshot creation.
+- Added whitespace handling for function declarations and allowed comment lines.
+- Added clean error handling for failed resolution and execution.
+- Implemented the `.tdbg` header, snapshot records, and dense index.
+- Documented the binary file layout and test commands in README.md.
+- Added test_tdbg.cpp to verify the file layout and error handling.
+
+### Tests Performed
+- All five existing test files compiled and passed.
+- A valid program generated session.tdbg successfully.
+- Read back the header, all snapshot records, and all dense-index offsets.
+- Verified a function argument changed from 10 to 20 and was returned to the caller.
+- Checked invalid calls return a nonzero exit code without leaving a stale session.tdbg file.
+- AddressSanitizer and UndefinedBehaviorSanitizer completed the integration test successfully.
+
+### Next
+- Repeat the tests on the submission machine.
+- Check git diff and push the verified serialization commit.
+- Review evaluation questions and be ready to explain the binary format and call stack.
+
+### Notes
+- The server is Phase 01 only; the client-side viewer and network receiving are not implemented.
+- The current argument behavior copies updated values back when a function returns.

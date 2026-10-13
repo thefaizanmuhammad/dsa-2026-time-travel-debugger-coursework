@@ -245,8 +245,8 @@ void writeHeader(FILE *f, const TTDBHeader &h)
 {
     fwrite(h.magic, 1, 4, f);
     fwrite(&h.version, sizeof(int32_t), 1, f);
-
-    // placeholder for other two data members
+    fwrite(&h.stepCount, sizeof(int32_t), 1, f);
+    fwrite(&h.indexOffset, sizeof(int64_t), 1, f);
 }
 
 // resolve.bin - bookkeeping
@@ -280,45 +280,34 @@ bool readSourceLine(ifstream &in, string &out)
 string firstWord(const string &line)
 {
     int i = 0;
-
-    while (i < line.length() && line[i] == ' ')
-    {
+    while (i < line.length() && (line[i] == ' ' || line[i] == '\t' || line[i] == '\r'))
         i++;
-    }
 
     string word = "";
-
-    while (i < line.length() && line[i] != ' ' && line[i] != '\t')
+    while (i < line.length() && line[i] != ' ' && line[i] != '\t' && line[i] != '\r')
     {
         word += line[i];
         i++;
     }
-
     return word;
 }
 
 string secondWord(const string &line)
 {
     int i = 0;
-
-    while (i < line.length() && line[i] != ' ' && line[i] != '\t')
-    {
+    while (i < line.length() && (line[i] == ' ' || line[i] == '\t' || line[i] == '\r'))
         i++;
-    }
-
-    while (i < line.length() && (line[i] == ' ' || line[i] == '\t'))
-    {
+    while (i < line.length() && line[i] != ' ' && line[i] != '\t' && line[i] != '\r')
         i++;
-    }
+    while (i < line.length() && (line[i] == ' ' || line[i] == '\t' || line[i] == '\r'))
+        i++;
 
     string word = "";
-
-    while (i < line.length() && line[i] != ' ' && line[i] != '\t')
+    while (i < line.length() && line[i] != ' ' && line[i] != '\t' && line[i] != '\r')
     {
         word += line[i];
         i++;
     }
-
     return word;
 }
 
@@ -339,6 +328,8 @@ bool validateProgram(const char *sourcePath)
     while (readSourceLine(file, line))
     {
         string word = firstWord(line);
+        if (word == "" || word.substr(0, 2) == "//")
+            continue;
 
         if (word == "func")
         {
@@ -889,30 +880,154 @@ void executeProgram(const char *resolveBinPath, int64_t mainOffset, Timeline &ti
 }
 
 // PASS 0x3: SERIALIZE TIMELINE
+bool writeString(FILE *file, const string &text)
+{
+    int32_t size = text.length();
+    if (fwrite(&size, sizeof(int32_t), 1, file) != 1)
+        return false;
+    if (size > 0 && fwrite(text.c_str(), size, 1, file) != 1)
+        return false;
+    return true;
+}
+
+bool writeVariable(FILE *file, const Variable &v)
+{
+    if (!writeString(file, v.name))
+        return false;
+    return fwrite(&v.value, sizeof(int32_t), 1, file) == 1;
+}
+
+bool writeFrame(FILE *file, const Frame &frame)
+{
+    if (frame.argc < 0 || frame.argc > MAX_VARS_PER_FRAME ||
+        frame.localCount < 0 || frame.localCount > MAX_VARS_PER_FRAME)
+        return false;
+
+    if (!writeString(file, frame.func_name))
+        return false;
+    if (fwrite(&frame.argc, sizeof(int32_t), 1, file) != 1)
+        return false;
+    if (fwrite(&frame.returnLine, sizeof(int32_t), 1, file) != 1)
+        return false;
+    if (fwrite(&frame.localCount, sizeof(int32_t), 1, file) != 1)
+        return false;
+
+    for (int i = 0; i < frame.argc; i++)
+    {
+        if (!writeVariable(file, frame.argv[i]))
+            return false;
+    }
+    for (int i = 0; i < frame.localCount; i++)
+    {
+        if (!writeVariable(file, frame.locals[i]))
+            return false;
+    }
+    return true;
+}
+
 void writeTdbg(Timeline &timeline, const char *tdbgPath)
 {
-    // placeholder for header
-    // index array of the size of stepcount from the timeline
-    // placing each snapshot in the file while maintaining the index(starting point of each nth snapshot)
-    // after timeline add the index array i the file
-    // update the header
+    FILE *file = fopen(tdbgPath, "wb+");
+    if (file == nullptr)
+        throw runtime_error("Cannot create tdbg file");
+
+    TTDBHeader header{{'T', 'T', 'D', 'B'}, 1, timeline.getStepCount(), 0};
+    writeHeader(file, header);
+
+    int32_t steps = timeline.getStepCount();
+    int64_t *index = new int64_t[steps];
+    TimelineNode *node = timeline.begin();
+    bool ok = true;
+
+    for (int i = 0; i < steps; i++)
+    {
+        if (node == nullptr || node->data == nullptr)
+        {
+            ok = false;
+            break;
+        }
+
+        index[i] = ftell(file);
+        Snapshot *snap = node->data;
+        int32_t depth = snap->stackDepth;
+
+        if (depth < 0 || depth > MAX_STACK_DEPTH ||
+            fwrite(&depth, sizeof(int32_t), 1, file) != 1)
+        {
+            ok = false;
+            break;
+        }
+
+        for (int j = 0; j < depth; j++)
+        {
+            if (!writeFrame(file, snap->callStack[j]))
+            {
+                ok = false;
+                break;
+            }
+        }
+        if (!ok)
+            break;
+
+        node = node->next;
+    }
+
+    if (ok)
+    {
+        header.indexOffset = ftell(file);
+        for (int i = 0; i < steps; i++)
+        {
+            if (fwrite(&index[i], sizeof(int64_t), 1, file) != 1)
+            {
+                ok = false;
+                break;
+            }
+        }
+    }
+
+    if (ok && fseek(file, 0, SEEK_SET) == 0)
+    {
+        writeHeader(file, header);
+    }
+    else
+    {
+        ok = false;
+    }
+
+    delete[] index;
+    if (fclose(file) != 0)
+        ok = false;
+
+    if (!ok)
+    {
+        remove(tdbgPath);
+        throw runtime_error("Cannot write tdbg file");
+    }
 }
-// main section
+
 int32_t main()
 {
-
+    remove("session.tdbg");
     if (!validateProgram("source.bin"))
+        return 1;
+
+    int64_t mainOffset = resolveProgram("source.bin", "resolve.bin");
+    if (mainOffset < 0)
+        return 1;
+
+    try
     {
-        // send an error response instead of a .tdbg file
+        Timeline timeline;
+        executeProgram("resolve.bin", mainOffset, timeline);
+        writeTdbg(timeline, "session.tdbg");
+    }
+    catch (const exception &e)
+    {
+        cerr << "Error: " << e.what() << endl;
+        remove("session.tdbg");
         return 1;
     }
 
-    int64_t mainOffset = resolveProgram("source.bin", "resolve.bin");
-
-    Timeline timeline;
-    executeProgram("resolve.bin", mainOffset, timeline);
-
-    writeTdbg(timeline, "session.tdbg");
-
+    cout << "Created session.tdbg" << endl;
     return 0;
 }
